@@ -141,3 +141,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+#  Cloud & Docker Custom Parameters 
+
+# Ignore local environment variable files containing actual passwords
+.env
+.env.local
+.env.production
+*.env
+
+# Ignore local Docker development storage and data volumes
+.docker/
+postgres_prod_data/
+html_data/
+
+# Ignore local SSH keys and cloud credentials
+*.pem
+*.pub
+.aws/
