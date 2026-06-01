@@ -1,6 +1,6 @@
 version: '3.8'
 
-# Group 9 Master Orchestration Core
+
 # Sub-Team A & B: Define microservices, network bridges, and volumes below.
 
 services:
