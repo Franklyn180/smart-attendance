@@ -111,5 +111,12 @@ Sub-Team C is responsible for adding and managing them.
 
 ## 5. Sign-Off
 
-All three sub-teams must confirm they have read this contract before starting Week 1 work.
+All three sub-team lead must confirm they have read this contract before starting Week 1 work.
+
+| Role | Name | Confirmed? | Date |
+|---|---|---|---|
+| Sub-Team C Lead (Owner) | TSAKO WABA MERISA | ☐ | |
+| Sub-Team A Lead | | ☐ | |
+| Sub-Team B Lead | | ☐ | |
+| Project Lead | | ☐ | |
 
