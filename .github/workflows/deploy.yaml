@@ -1,0 +1,89 @@
+name: Automated GitOps E-Commerce Deployment
+
+# Trigger the workflow on code merges into the master branch
+on:
+  push:
+    branches:
+      - master
+
+# Global environment parameters (To be defined based on the Environment Contract)
+env:
+  AWS_REGION: # update with correct AWS region
+  DEPLOY_DIR: # update with correct deployment directory on the EC2 instance
+
+jobs:
+  # =========================================================================
+  # STAGE 1: QUALITY ASSURANCE & TESTING (CI) - To be programmed in Week 2
+  # =========================================================================
+  continuous-integration:
+    name: "CI: Linting, Unit & Integration Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set Up Python Environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'  # Specify the Python version needed for testing
+
+      - name: Pre-Merge Configuration Linting
+        run: |
+          echo "[Week 2 Placeholder] Execute local syntax and linting checks on all manifests."
+
+      - name: Execute Core Unit Tests
+        run: |
+          echo "[Week 2 Placeholder] Run functional unit test suites and isolated logic routines."
+
+      - name: Execute API Integration Tests
+        run: |
+          echo "[Week 2 Placeholder] Run real-time API integration tests and mock validation."
+
+  # =========================================================================
+  # STAGE 2: CONTAINER COMPILATION (CI) - To be programmed in Week 2
+  # =========================================================================
+  build-and-package:
+    name: "CI: Multi-Stage Image Assembly"
+    needs: continuous-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Build Multi-Stage Docker Images
+        run: |
+          echo "[Week 2 Placeholder] Compile ultra-lightweight, optimized runtime images."
+
+  # =========================================================================
+  # STAGE 3: AUTOMATED DEPLOYMENT & ROLLBACK (CD) - To be programmed in Week 3
+  # =========================================================================
+  continuous-delivery:
+    name: "CD: Secure AWS Deployment & Validation"
+    needs: build-and-package
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Dynamic Firewall Whitelisting
+        run: |
+          echo "[Week 3 Placeholder] Look up runner IP and authorize in AWS Security Group."
+
+      - name: Bridge Automated Delivery Pipeline
+        run: |
+          echo "[Week 3 Placeholder] Establish SSH tunnel, pull updates, and run docker-compose up."
+
+      - name: Live Delivery Validation
+        run: |
+          echo "[Week 3 Placeholder] Run automated curls to verify GET /health returns 200 OK."
+
+      - name: Automated Pipeline Rollbacks
+        if: failure()
+        run: |
+          echo "[Week 3 Placeholder] If validation fails, rollback to previous stable release tag."
+
+      - name: Tear Down Dynamic Firewall Protection
+        if: always()
+        run: |
+          echo "[Week 3 Placeholder] Remove runner IP from AWS Security Group rules."
