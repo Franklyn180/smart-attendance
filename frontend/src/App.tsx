@@ -1,308 +1,855 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import QRCode from 'qrcode.react'
-import { Analytics, Course, Student } from './types'
+import './styles.css'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+const defaultApiUrl = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:8001/api`
+  : 'http://localhost:8001/api'
+
+const API_URL = import.meta.env.VITE_API_URL ?? defaultApiUrl
+
+interface User {
+  id: number
+  email: string
+  full_name: string
+  student_id: string | null
+  is_instructor: boolean
+  is_active: boolean
+}
+
+interface Course {
+  id: number
+  name: string
+  code: string
+  instructor: string
+}
+
+interface AttendanceSession {
+  id: number
+  course_id: number
+  instructor_id: number
+  session_key: string
+  started_at: string
+  ended_at: string | null
+  expires_at?: string | null
+  is_active: boolean
+  description: string | null
+  course?: Course
+}
+
+interface AttendanceRecord {
+  id: number
+  session_id: number
+  user_id: number
+  course_id: number
+  timestamp: string
+  status: string
+  user: {
+    id: number
+    full_name: string
+    student_id: string | null
+  }
+}
+
+interface Analytics {
+  total_students: number
+  total_courses: number
+  total_attendance: number
+  attendance_by_session: Array<{
+    session_id: number
+    course_name: string
+    timestamp: string
+    count: number
+  }>
+}
 
 function App() {
-  const [students, setStudents] = useState<Student[]>([])
+  const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string>('')
   const [courses, setCourses] = useState<Course[]>([])
+  const [activeSessions, setActiveSessions] = useState<AttendanceSession[]>([])
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [studentName, setStudentName] = useState('')
-  const [studentEmail, setStudentEmail] = useState('')
-  const [studentRoll, setStudentRoll] = useState('')
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+
+  // Form states
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [registerPassword, setRegisterPassword] = useState('')
+  const [registerName, setRegisterName] = useState('')
+  const [registerStudentId, setRegisterStudentId] = useState('')
+  const [isRegisterMode, setIsRegisterMode] = useState(false)
+  const [isInstructor, setIsInstructor] = useState(false)
+
+  // Instructor form states
   const [courseName, setCourseName] = useState('')
   const [courseCode, setCourseCode] = useState('')
   const [courseInstructor, setCourseInstructor] = useState('')
-  const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
-  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
-  const [scanCode, setScanCode] = useState('')
-  const [message, setMessage] = useState('')
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedCourse, setSelectedCourse] = useState<number | null>(null)
+  const [sessionDescription, setSessionDescription] = useState('')
+  const [instructorSessions, setInstructorSessions] = useState<AttendanceSession[]>([])
+  const [sessionAttendance, setSessionAttendance] = useState<Record<number, AttendanceRecord[]>>({})
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(Date.now())
 
-  const qrPayload = useMemo(() => {
-    if (!selectedStudentId || !selectedCourseId) {
-      return ''
-    }
-    return `attendance:${selectedStudentId}:${selectedCourseId}:${Date.now()}`
-  }, [selectedStudentId, selectedCourseId])
+  // Student scanning states
+  const [scanData, setScanData] = useState('')
 
+  // Persist login token across refreshes
   useEffect(() => {
-    async function loadData() {
-      const [courseRes, studentRes, analyticsRes] = await Promise.all([
-        fetch(`${API_URL}/courses`),
-        fetch(`${API_URL}/students`),
-        fetch(`${API_URL}/analytics`),
-      ])
-      if (courseRes.ok) setCourses(await courseRes.json())
-      if (studentRes.ok) setStudents(await studentRes.json())
-      if (analyticsRes.ok) setAnalytics(await analyticsRes.json())
+    const savedToken = localStorage.getItem('attendance_token')
+    if (savedToken) {
+      setToken(savedToken)
     }
-    loadData()
-  }, [refreshKey])
+  }, [])
 
-  const reload = () => setRefreshKey((previous) => previous + 1)
-
-  const submitStudent = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!studentName || !studentEmail || !studentRoll) {
-      setMessage('Student name, email, and roll number are required.')
-      return
+  // Load user data on token change
+  useEffect(() => {
+    if (token) {
+      loadUserData()
     }
+  }, [token])
 
-    const response = await fetch(`${API_URL}/students`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: studentName,
-        email: studentEmail,
-        student_id: studentRoll,
-      }),
-    })
+  // Countdown timer
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
-    if (response.ok) {
-      setStudentName('')
-      setStudentEmail('')
-      setStudentRoll('')
-      setMessage('Student registered successfully.')
-      reload()
-    } else {
-      const body = await response.json()
-      setMessage(body.detail || 'Unable to register student.')
+  const loadUserData = async () => {
+    try {
+      const response = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const userData = await response.json()
+        setUser(userData)
+        await loadCourses()
+        if (userData.is_instructor) {
+          await loadInstructorSessions()
+          await loadAnalytics()
+        } else {
+          await loadActiveSessions()
+        }
+      } else {
+        localStorage.removeItem('attendance_token')
+        setToken('')
+        setUser(null)
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error)
     }
   }
 
-  const submitCourse = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const loadCourses = async () => {
+    try {
+      const response = await fetch(`${API_URL}/courses`)
+      if (response.ok) {
+        setCourses(await response.json())
+      }
+    } catch (error) {
+      console.error('Error loading courses:', error)
+    }
+  }
+
+  // Fixed: was hitting /api/api/users/students (double /api prefix)
+  const loadActiveSessions = async () => {
+    try {
+      const response = await fetch(`${API_URL}/sessions/active`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setActiveSessions(await response.json())
+      }
+    } catch (error) {
+      console.error('Error loading active sessions:', error)
+    }
+  }
+
+  const loadInstructorSessions = async () => {
+    if (!token) return
+    try {
+      const response = await fetch(`${API_URL}/sessions/instructor-sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setInstructorSessions(await response.json())
+      }
+    } catch (error) {
+      console.error('Error loading instructor sessions:', error)
+    }
+  }
+
+  const loadAnalytics = async () => {
+    if (!token) return
+    setAnalyticsLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/analytics`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) {
+        console.error('Analytics failed')
+        setAnalytics(null)
+        return
+      }
+      const data = await response.json()
+      setAnalytics(data)
+    } catch (error) {
+      console.error('Analytics error:', error)
+      setAnalytics(null)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
+
+  const getCountdown = (session: AttendanceSession) => {
+    const expiry = session.expires_at
+      ? new Date(session.expires_at + 'Z').getTime()
+      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
+    const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
+    const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
+    const seconds = String(remaining % 60).padStart(2, '0')
+    return `${minutes}:${seconds}`
+  }
+
+  const isSessionOpen = (session: AttendanceSession) => {
+    const expiry = session.expires_at
+      ? new Date(session.expires_at + 'Z').getTime()
+      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
+    return expiry > now
+  }
+
+  const loadSessionAttendance = async (sessionId: number) => {
+    if (!token) return
+    setMessage('')
+    try {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}/attendance`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const attendanceData = await response.json()
+        setSessionAttendance((prev) => ({ ...prev, [sessionId]: attendanceData }))
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Failed to load attendance records')
+      }
+    } catch (error) {
+      setMessage('Error loading attendance records')
+    }
+  }
+
+  const toggleSessionAttendance = async (sessionId: number) => {
+    if (expandedSessionId === sessionId) {
+      setExpandedSessionId(null)
+      return
+    }
+    if (!sessionAttendance[sessionId]) {
+      await loadSessionAttendance(sessionId)
+    }
+    setExpandedSessionId(sessionId)
+  }
+
+  // Authentication functions
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setMessage('')
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        localStorage.setItem('attendance_token', data.access_token)
+        setToken(data.access_token)
+        setUser(data.user)
+        setLoginEmail('')
+        setLoginPassword('')
+        setMessage('Login successful!')
+        await loadCourses()
+        if (data.user.is_instructor) {
+          await loadInstructorSessions()
+          await loadAnalytics()
+        } else {
+          await loadActiveSessions()
+        }
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Login failed')
+      }
+    } catch (error) {
+      setMessage('Error during login')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setMessage('')
+
+    if (!isInstructor && !registerStudentId.trim()) {
+      setMessage('Student ID is required for student registration.')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: registerEmail,
+          password: registerPassword,
+          full_name: registerName,
+          student_id: registerStudentId || null,
+          is_instructor: isInstructor,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        localStorage.setItem('attendance_token', data.access_token)
+        setToken(data.access_token)
+        setUser(data.user)
+        setRegisterEmail('')
+        setRegisterPassword('')
+        setRegisterName('')
+        setRegisterStudentId('')
+        setIsRegisterMode(false)
+        setMessage('Registration successful!')
+        await loadCourses()
+        if (data.user.is_instructor) {
+          await loadInstructorSessions()
+          await loadAnalytics()
+        } else {
+          await loadActiveSessions()
+        }
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Registration failed')
+      }
+    } catch (error) {
+      setMessage('Error during registration')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('attendance_token')
+    setUser(null)
+    setToken('')
+    setLoginEmail('')
+    setLoginPassword('')
+    setCourses([])
+    setActiveSessions([])
+    setAnalytics(null)
+    setInstructorSessions([])
+    setSessionAttendance({})
+  }
+
+  // Instructor functions
+  const handleCreateCourse = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMessage('')
+
     if (!courseName || !courseCode || !courseInstructor) {
-      setMessage('Course name, code, and instructor are required.')
+      setMessage('Please fill in all course fields')
       return
     }
 
-    const response = await fetch(`${API_URL}/courses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: courseName,
-        code: courseCode,
-        instructor: courseInstructor,
-      }),
-    })
+    try {
+      const response = await fetch(`${API_URL}/courses`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: courseName,
+          code: courseCode,
+          instructor: courseInstructor,
+        }),
+      })
 
-    if (response.ok) {
-      setCourseName('')
-      setCourseCode('')
-      setCourseInstructor('')
-      setMessage('Course added successfully.')
-      reload()
-    } else {
-      const body = await response.json()
-      setMessage(body.detail || 'Unable to add course.')
+      if (response.ok) {
+        setMessage('Course created successfully')
+        setCourseName('')
+        setCourseCode('')
+        setCourseInstructor('')
+        await loadCourses()
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Failed to create course')
+      }
+    } catch (error) {
+      setMessage('Error creating course')
     }
   }
 
-  const submitScan = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!scanCode) {
-      setMessage('Scan data is required to mark attendance.')
+  const handleStartSession = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setMessage('')
+
+    if (!selectedCourse) {
+      setMessage('Please select a course')
       return
     }
 
-    const response = await fetch(`${API_URL}/attendance/scan`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scan_data: scanCode }),
-    })
+    try {
+      const response = await fetch(`${API_URL}/sessions/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          course_id: selectedCourse,
+          description: sessionDescription,
+        }),
+      })
 
-    if (response.ok) {
-      setMessage('Attendance recorded successfully.')
-      setScanCode('')
-      reload()
-    } else {
-      const body = await response.json()
-      setMessage(body.detail || 'Unable to record attendance.')
+      if (response.ok) {
+        setMessage('Attendance session started!')
+        setSelectedCourse(null)
+        setSessionDescription('')
+        await refreshData()
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Failed to start session')
+      }
+    } catch (error) {
+      setMessage('Error starting session')
     }
   }
 
+  const handleEndSession = async (sessionId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/sessions/${sessionId}/end`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        setMessage('Session ended')
+        await refreshData()
+      } else {
+        setMessage('Failed to end session')
+      }
+    } catch (error) {
+      setMessage('Error ending session')
+    }
+  }
+
+  // Student functions
+  const handleJoinSession = async (sessionKey: string) => {
+    setMessage('')
+    try {
+      const response = await fetch(`${API_URL}/attendance/join-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ session_key: sessionKey }),
+      })
+
+      if (response.ok) {
+        setMessage('✓ Attendance marked successfully!')
+        setScanData('')
+        await loadActiveSessions()
+      } else {
+        const data = await response.json()
+        setMessage(data.detail || 'Failed to mark attendance')
+      }
+    } catch (error) {
+      setMessage('Error marking attendance')
+    }
+  }
+
+  const handleScanQR = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!scanData.trim()) {
+      setMessage('Please enter or scan a QR code')
+      return
+    }
+    await handleJoinSession(scanData.trim())
+  }
+
+  const refreshData = async () => {
+    if (user?.is_instructor) {
+      await loadInstructorSessions()
+      await loadAnalytics()
+    } else {
+      await loadActiveSessions()
+    }
+  }
+
+  // ===== Render login/register screen =====
+  if (!user) {
+    return (
+      <div className="app-shell">
+        <header>
+          <h1>Smart Attendance Management</h1>
+          <p>Login to access the attendance system</p>
+        </header>
+
+        <section className="auth-container">
+          <div className="auth-panel">
+            {!isRegisterMode ? (
+              <>
+                <h2>Login</h2>
+                <div className="demo-credentials">
+                  <p><strong>Demo accounts:</strong></p>
+                  <p>Instructor: instructor@demo.com / Password123!</p>
+                  <p>Student: student@demo.com / Password123!</p>
+                </div>
+                <form onSubmit={handleLogin} className="form-stack">
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      disabled={loading}
+                    />
+                  </label>
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Logging in...' : 'Login'}
+                  </button>
+                </form>
+                <p>
+                  Don't have an account?{' '}
+                  <button type="button" onClick={() => setIsRegisterMode(true)} className="link-button">
+                    Register here
+                  </button>
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>Register</h2>
+                <form onSubmit={handleRegister} className="form-stack">
+                  <label>
+                    Full Name
+                    <input
+                      type="text"
+                      value={registerName}
+                      onChange={(e) => setRegisterName(e.target.value)}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      type="email"
+                      value={registerEmail}
+                      onChange={(e) => setRegisterEmail(e.target.value)}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={registerPassword}
+                      onChange={(e) => setRegisterPassword(e.target.value)}
+                      disabled={loading}
+                    />
+                  </label>
+                  <label>
+                    Register as Instructor
+                    <input
+                      type="checkbox"
+                      checked={isInstructor}
+                      onChange={(e) => setIsInstructor(e.target.checked)}
+                      disabled={loading}
+                    />
+                  </label>
+                  {!isInstructor && (
+                    <label>
+                      Student ID (required)
+                      <input
+                        type="text"
+                        value={registerStudentId}
+                        onChange={(e) => setRegisterStudentId(e.target.value)}
+                        disabled={loading}
+                      />
+                    </label>
+                  )}
+                  <button type="submit" disabled={loading}>
+                    {loading ? 'Registering...' : 'Register'}
+                  </button>
+                </form>
+                <p>
+                  Already have an account?{' '}
+                  <button type="button" onClick={() => setIsRegisterMode(false)} className="link-button">
+                    Login here
+                  </button>
+                </p>
+              </>
+            )}
+            {message && (
+              <p className={`message ${message.includes('✓') ? 'success' : 'error'}`}>{message}</p>
+            )}
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  // ===== Render instructor dashboard =====
+  if (user.is_instructor) {
+    return (
+      <div className="app-shell">
+        <header>
+          <h1>Instructor Dashboard</h1>
+          <p>Welcome, {user.full_name}</p>
+          <button onClick={handleLogout} className="logout-btn">Logout</button>
+        </header>
+
+        <section className="layout-grid">
+          <article className="panel">
+            <h2>Create Course</h2>
+            <form onSubmit={handleCreateCourse} className="form-stack">
+              <label>
+                Course Name
+                <input value={courseName} onChange={(e) => setCourseName(e.target.value)} />
+              </label>
+              <label>
+                Course Code
+                <input value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
+              </label>
+              <label>
+                Instructor Name
+                <input value={courseInstructor} onChange={(e) => setCourseInstructor(e.target.value)} />
+              </label>
+              <button type="submit">Create Course</button>
+            </form>
+          </article>
+
+          <article className="panel">
+            <h2>Start Attendance Session</h2>
+            <form onSubmit={handleStartSession} className="form-stack">
+              <label>
+                Select Course
+                <select
+                  value={selectedCourse ?? ''}
+                  onChange={(e) => setSelectedCourse(Number(e.target.value) || null)}
+                >
+                  <option value="">Select a course</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.name} ({course.code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Session Description (optional)
+                <input
+                  value={sessionDescription}
+                  onChange={(e) => setSessionDescription(e.target.value)}
+                  placeholder="e.g., Lecture 5 - Database Design"
+                />
+              </label>
+              <button type="submit">Start Session</button>
+            </form>
+          </article>
+        </section>
+
+        <section className="panel wide">
+          <h2>Active Sessions</h2>
+          {instructorSessions.filter((s) => s.is_active).length === 0 ? (
+            <p>No active sessions</p>
+          ) : (
+            <div className="sessions-grid">
+              {instructorSessions
+                .filter((s) => s.is_active)
+                .map((session) => (
+                  <div key={session.id} className="session-card">
+                    <h3>{courses.find((c) => c.id === session.course_id)?.name || 'Course'}</h3>
+                    <p>Session ID: {session.id}</p>
+                    <p>{session.description || 'No description'}</p>
+                    <div className="qr-display">
+                      <QRCode value={session.session_key} size={150} />
+                    </div>
+                    <div className="session-meta">
+                      <p className="session-key">{session.session_key}</p>
+                      <p className="timer-label">
+                        Attendance open for: <strong>{getCountdown(session)}</strong>
+                      </p>
+                      {!isSessionOpen(session) && (
+                        <p className="timer-expired">Attendance window closed</p>
+                      )}
+                    </div>
+                    <button onClick={() => handleEndSession(session.id)} className="end-btn">
+                      End Session
+                    </button>
+                    <button
+                      onClick={() => toggleSessionAttendance(session.id)}
+                      className="view-btn"
+                    >
+                      {expandedSessionId === session.id ? 'Hide Attendance' : 'View Attendance'}
+                    </button>
+                    {expandedSessionId === session.id && sessionAttendance[session.id] && (
+                      <div className="attendance-table">
+                        <h4>Student Attendance</h4>
+                        {sessionAttendance[session.id].length > 0 ? (
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Student ID</th>
+                                <th>Status</th>
+                                <th>Checked In</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sessionAttendance[session.id].map((record) => (
+                                <tr key={record.id}>
+                                  <td>{record.user.full_name}</td>
+                                  <td>{record.user.student_id || 'N/A'}</td>
+                                  <td>{record.status}</td>
+                                  <td>{new Date(record.timestamp).toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p>No students have marked attendance yet.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+        </section>
+
+        <section className="analytics-panel">
+          <article className="panel wide">
+            <h2>Attendance Analytics</h2>
+            {analyticsLoading ? (
+              <p>Loading analytics...</p>
+            ) : analytics ? (
+              <>
+                <div className="stats-row">
+                  <div className="stat-card">
+                    <span>{analytics.total_students}</span>
+                    <p>Students Registered</p>
+                  </div>
+                  <div className="stat-card">
+                    <span>{analytics.total_courses}</span>
+                    <p>Courses</p>
+                  </div>
+                  <div className="stat-card">
+                    <span>{analytics.total_attendance}</span>
+                    <p>Total Attendance Records</p>
+                  </div>
+                </div>
+                <div className="analytics-list">
+                  <h3>Attendance by Session</h3>
+                  {(analytics.attendance_by_session?.length ?? 0) > 0 ? (
+                    analytics.attendance_by_session.map((item) => (
+                      <div key={item.session_id} className="analytics-item">
+                        <strong>{item.course_name}</strong>
+                        <span>{item.count} students marked present</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p>No attendance records yet</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p>No analytics available.</p>
+            )}
+          </article>
+        </section>
+
+        {message && (
+          <p className={`message ${message.includes('✓') ? 'success' : 'error'}`}>{message}</p>
+        )}
+      </div>
+    )
+  }
+
+  // ===== Render student dashboard =====
   return (
     <div className="app-shell">
       <header>
-        <h1>Smart Attendance Management</h1>
-        <p>Student registration, QR attendance, course management, and analytics in one dashboard.</p>
+        <h1>Student Dashboard</h1>
+        <p>Welcome, {user.full_name}</p>
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
       </header>
 
       <section className="layout-grid">
         <article className="panel">
-          <h2>Student Registration</h2>
-          <form onSubmit={submitStudent} className="form-stack">
-            <label>
-              Student Name
-              <input value={studentName} onChange={(event) => setStudentName(event.target.value)} />
-            </label>
-            <label>
-              Student Email
-              <input type="email" value={studentEmail} onChange={(event) => setStudentEmail(event.target.value)} />
-            </label>
-            <label>
-              Roll / ID
-              <input value={studentRoll} onChange={(event) => setStudentRoll(event.target.value)} />
-            </label>
-            <button type="submit">Register Student</button>
-          </form>
-        </article>
-
-        <article className="panel">
-          <h2>Course Management</h2>
-          <form onSubmit={submitCourse} className="form-stack">
-            <label>
-              Course Name
-              <input value={courseName} onChange={(event) => setCourseName(event.target.value)} />
-            </label>
-            <label>
-              Course Code
-              <input value={courseCode} onChange={(event) => setCourseCode(event.target.value)} />
-            </label>
-            <label>
-              Lecturer Name
-              <input value={courseInstructor} onChange={(event) => setCourseInstructor(event.target.value)} />
-            </label>
-            <button type="submit">Create Course</button>
-          </form>
-        </article>
-      </section>
-
-      <section className="layout-grid">
-        <article className="panel">
-          <h2>Attendance QR Generator</h2>
-          <label>
-            Select Student
-            <select value={selectedStudentId ?? ''} onChange={(event) => setSelectedStudentId(Number(event.target.value) || null)}>
-              <option value="">Select a student</option>
-              {students.map((student) => (
-                <option key={student.id} value={student.id}>
-                  {student.name} ({student.student_id})
-                </option>
+          <h2>Active Classes</h2>
+          {activeSessions.length === 0 ? (
+            <p>No active classes at the moment</p>
+          ) : (
+            <div className="sessions-list">
+              {activeSessions.map((session) => (
+                <div key={session.id} className="session-item">
+                  <h3>
+                    {session.course?.name ||
+                      courses.find((c) => c.id === session.course_id)?.name ||
+                      `Course ${session.course_id}`}
+                  </h3>
+                  <p>{session.description || 'Class in progress'}</p>
+                  <button
+                    onClick={() => handleJoinSession(session.session_key)}
+                    className="join-btn"
+                  >
+                    Join Class (Mark Attendance)
+                  </button>
+                </div>
               ))}
-            </select>
-          </label>
-          <label>
-            Select Course
-            <select value={selectedCourseId ?? ''} onChange={(event) => setSelectedCourseId(Number(event.target.value) || null)}>
-              <option value="">Select a course</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {qrPayload && (
-            <div className="qr-block">
-              <p>Scan this code to record attendance for the selected student and course.</p>
-              <div className="qr-frame">
-                <QRCode value={qrPayload} size={180} />
-              </div>
-              <textarea readOnly rows={3} value={qrPayload} />
             </div>
           )}
         </article>
 
         <article className="panel">
-          <h2>Scan Attendance</h2>
-          <form onSubmit={submitScan} className="form-stack">
+          <h2>Scan QR Code</h2>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+            Paste the session key from a QR code scan, or type it manually.
+          </p>
+          <form onSubmit={handleScanQR} className="form-stack">
             <label>
-              QR Payload
-              <textarea value={scanCode} onChange={(event) => setScanCode(event.target.value)} rows={5} />
+              Session Key
+              <textarea
+                value={scanData}
+                onChange={(e) => setScanData(e.target.value)}
+                placeholder="e.g., session:abc123def456"
+                rows={3}
+              />
             </label>
             <button type="submit">Record Attendance</button>
           </form>
         </article>
       </section>
 
-      <section className="analytics-panel">
-        <article className="panel wide">
-          <h2>Lecturer Dashboard</h2>
-          <div className="stats-row">
-            <div className="stat-card">
-              <span>{students.length}</span>
-              <p>Students registered</p>
-            </div>
-            <div className="stat-card">
-              <span>{courses.length}</span>
-              <p>Courses available</p>
-            </div>
-            <div className="stat-card">
-              <span>{analytics?.total_attendance ?? 0}</span>
-              <p>Total attendance records</p>
-            </div>
-          </div>
-
-          <div className="analytics-list">
-            <h3>Attendance Analytics</h3>
-            {analytics?.attendance_by_course.length ? (
-              analytics.attendance_by_course.map((item) => (
-                <div key={item.course_name} className="analytics-item">
-                  <strong>{item.course_name}</strong>
-                  <span>{item.count} records</span>
-                </div>
-              ))
-            ) : (
-              <p>No attendance records yet.</p>
-            )}
-          </div>
-        </article>
-      </section>
-
-      <section className="panel wide">
-        <h2>Student and Course Lists</h2>
-        <div className="tables-row">
-          <div>
-            <h3>Students</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Roll</th>
-                  <th>Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((student) => (
-                  <tr key={student.id}>
-                    <td>{student.name}</td>
-                    <td>{student.student_id}</td>
-                    <td>{student.email}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div>
-            <h3>Courses</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Code</th>
-                  <th>Lecturer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {courses.map((course) => (
-                  <tr key={course.id}>
-                    <td>{course.name}</td>
-                    <td>{course.code}</td>
-                    <td>{course.instructor}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      {message && <div className="toast">{message}</div>}
+      {message && (
+        <p className={`message ${message.includes('✓') ? 'success' : 'error'}`}>{message}</p>
+      )}
     </div>
   )
 }

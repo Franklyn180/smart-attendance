@@ -15,7 +15,7 @@ db_name = os.getenv('DB_NAME')
 if db_host and db_user and db_password and db_name:
     DATABASE_URL = f'mysql+pymysql://{db_user}:{db_password}@{db_host}:3306/{db_name}'
 else:
-    DATABASE_URL = os.getenv('DATABASE_URL', 'mysql+pymysql://attendance:attendance@127.0.0.1:3306/attendance_db')
+    DATABASE_URL = os.getenv('DATABASE_URL') or 'sqlite:///./attendance.db'
 
 engine = create_engine(DATABASE_URL, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
