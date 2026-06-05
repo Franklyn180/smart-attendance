@@ -92,6 +92,36 @@ button:hover {
   box-shadow: 0 16px 30px rgba(99, 102, 241, 0.2);
 }
 
+.secondary-btn {
+  background: linear-gradient(135deg, #10b981, #14b8a6);
+}
+
+.qr-header-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.hint-text {
+  font-size: 0.95rem;
+  color: #94a3b8;
+  max-width: 700px;
+  margin: 0;
+}
+
+.qr-reader {
+  width: 100%;
+  min-height: 320px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.95);
+  margin-bottom: 18px;
+}
+
 .stats-row {
   display: grid;
   gap: 16px;

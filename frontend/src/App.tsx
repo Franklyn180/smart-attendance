@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import QRCode from 'qrcode.react'
+import * as QRCodeReact from 'qrcode.react'
+import { Html5Qrcode } from 'html5-qrcode'
 import './styles.css'
+
+const QRCodeComponent = (QRCodeReact as any).QRCodeSVG || (QRCodeReact as any).default
 
 const defaultApiUrl = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.hostname}:8001/api`
@@ -63,6 +66,7 @@ interface Analytics {
   }>
 }
 
+
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string>('')
@@ -96,6 +100,9 @@ function App() {
 
   // Student scanning states
   const [scanData, setScanData] = useState('')
+  const [showScanner, setShowScanner] = useState(false)
+  const [scannerInstance, setScannerInstance] = useState<Html5Qrcode | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   // Persist login token across refreshes
   useEffect(() => {
@@ -104,6 +111,15 @@ function App() {
       setToken(savedToken)
     }
   }, [])
+
+  useEffect(() => {
+  const mobile =
+    /Android|iPhone|iPad|iPod|Mobile/i.test(
+      navigator.userAgent
+    )
+
+  setIsMobile(mobile)
+}, [])
 
   // Load user data on token change
   useEffect(() => {
@@ -475,6 +491,72 @@ function App() {
     }
   }
 
+  const stopScanner = async () => {
+    if (scannerInstance) {
+      try {
+        await scannerInstance.stop()
+      } catch (error) {
+        console.warn('Error stopping QR scanner:', error)
+      }
+      try {
+        await scannerInstance.clear()
+      } catch (error) {
+        console.warn('Error clearing QR scanner:', error)
+      }
+      setScannerInstance(null)
+    }
+    setShowScanner(false)
+  }
+
+  useEffect(() => {
+    if (!showScanner || !isMobile) {
+      return
+    }
+
+    const qrRegionId = 'qr-reader'
+    const html5QrCode = new Html5Qrcode(qrRegionId)
+
+    html5QrCode
+      .start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 280 },
+        (decodedText) => {
+          if (decodedText) {
+            setScanData(decodedText)
+            handleJoinSession(decodedText)
+            stopScanner()
+          }
+        },
+        () => {
+          // ignore non-fatal scan errors
+        },
+      )
+      .then(() => setScannerInstance(html5QrCode))
+      .catch((error) => {
+        console.error('QR scanner start failed:', error)
+        setMessage('Unable to open camera scanner. Please allow camera access or use manual entry.')
+        try {
+          html5QrCode.clear()
+        } catch {
+          // ignore
+        }
+        setShowScanner(false)
+      })
+
+    return () => {
+      html5QrCode
+        .stop()
+        .catch(() => null)
+        .finally(() => {
+          try {
+            html5QrCode.clear()
+          } catch {
+            // ignore
+          }
+        })
+    }
+  }, [showScanner, isMobile])
+
   const handleScanQR = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!scanData.trim()) {
@@ -688,7 +770,7 @@ function App() {
                     <p>Session ID: {session.id}</p>
                     <p>{session.description || 'No description'}</p>
                     <div className="qr-display">
-                      <QRCode value={session.session_key} size={150} />
+                      <QRCodeComponent value={session.session_key} size={150} />
                     </div>
                     <div className="session-meta">
                       <p className="session-key">{session.session_key}</p>
@@ -734,6 +816,63 @@ function App() {
                           </table>
                         ) : (
                           <p>No students have marked attendance yet.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel wide">
+          <h2>Past Sessions</h2>
+          {instructorSessions.filter((s) => !s.is_active).length === 0 ? (
+            <p>No past sessions</p>
+          ) : (
+            <div className="sessions-grid">
+              {instructorSessions
+                .filter((s) => !s.is_active)
+                .map((session) => (
+                  <div key={session.id} className="session-card">
+                    <h3>{courses.find((c) => c.id === session.course_id)?.name || 'Course'}</h3>
+                    <p>Session ID: {session.id}</p>
+                    <p>{session.description || 'No description'}</p>
+                    <div className="session-meta">
+                      <p className="session-key">{session.session_key}</p>
+                      <p className="timer-label">Attendance window ended</p>
+                      <p className="timer-summary">Total students marked attendance: <strong>{(sessionAttendance[session.id]?.length ?? 0)}</strong></p>
+                    </div>
+                    <button onClick={() => toggleSessionAttendance(session.id)} className="view-btn">
+                      {expandedSessionId === session.id ? 'Hide Attendance' : 'View Attendance'}
+                    </button>
+
+                    {expandedSessionId === session.id && sessionAttendance[session.id] && (
+                      <div className="attendance-table">
+                        <h4>Student Attendance</h4>
+                        {sessionAttendance[session.id].length > 0 ? (
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Name</th>
+                                <th>Student ID</th>
+                                <th>Status</th>
+                                <th>Checked In</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sessionAttendance[session.id].map((record) => (
+                                <tr key={record.id}>
+                                  <td>{record.user.full_name}</td>
+                                  <td>{record.user.student_id || 'N/A'}</td>
+                                  <td>{record.status}</td>
+                                  <td>{new Date(record.timestamp).toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p>No students marked attendance for this session.</p>
                         )}
                       </div>
                     )}
@@ -828,10 +967,29 @@ function App() {
         </article>
 
         <article className="panel">
-          <h2>Scan QR Code</h2>
-          <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
-            Paste the session key from a QR code scan, or type it manually.
-          </p>
+          <div className="qr-header-row">
+            <div>
+              <h2>Scan QR Code</h2>
+              <p className="hint-text">
+                {isMobile
+                  ? 'Open the scan lens to use your phone or tablet camera. Once the QR code is recognized, attendance will be marked automatically.'
+                  : 'QR camera scanning is available on phone and tablet only. Use the manual entry below if you are on desktop.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowScanner((prev) => !prev)}
+              disabled={!isMobile}
+              className="secondary-btn"
+            >
+              {showScanner ? 'Close Scan Lens' : 'Open Scan Lens'}
+            </button>
+          </div>
+
+          {showScanner && isMobile && (
+            <div id="qr-reader" className="qr-reader" />
+          )}
+
           <form onSubmit={handleScanQR} className="form-stack">
             <label>
               Session Key
