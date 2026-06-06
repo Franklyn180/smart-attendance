@@ -219,21 +219,21 @@ function App() {
   }
 
   const getCountdown = (session: AttendanceSession) => {
-  const expiryStr = session.expires_at || 
-    new Date(new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000).toISOString()
-  const expiry = new Date(expiryStr.endsWith('Z') ? expiryStr : expiryStr + 'Z').getTime()
-  const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
-  const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
-  const seconds = String(remaining % 60).padStart(2, '0')
-  return `${minutes}:${seconds}`
-}
+    const expiry = session.expires_at
+      ? new Date(session.expires_at + 'Z').getTime()
+      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
+    const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
+    const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
+    const seconds = String(remaining % 60).padStart(2, '0')
+    return `${minutes}:${seconds}`
+  }
 
   const isSessionOpen = (session: AttendanceSession) => {
-  const expiryStr = session.expires_at || 
-    new Date(new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000).toISOString()
-  const expiry = new Date(expiryStr.endsWith('Z') ? expiryStr : expiryStr + 'Z').getTime()
-  return expiry > now
-}
+    const expiry = session.expires_at
+      ? new Date(session.expires_at + 'Z').getTime()
+      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
+    return expiry > now
+  }
 
   const loadSessionAttendance = async (sessionId: number) => {
     if (!token) return
@@ -368,6 +368,15 @@ function App() {
     setAnalytics(null)
     setInstructorSessions([])
     setSessionAttendance({})
+  }
+
+  const refreshData = async () => {
+    if (user?.is_instructor) {
+      await loadInstructorSessions()
+      await loadAnalytics()
+    } else {
+      await loadActiveSessions()
+    }
   }
 
   // Instructor functions
@@ -565,6 +574,7 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
+
   const handleScanQR = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!scanData.trim()) {
@@ -572,15 +582,6 @@ function App() {
       return
     }
     await handleJoinSession(scanData.trim())
-  }
-
-  const refreshData = async () => {
-    if (user?.is_instructor) {
-      await loadInstructorSessions()
-      await loadAnalytics()
-    } else {
-      await loadActiveSessions()
-    }
   }
 
   // ===== Render login/register screen =====
