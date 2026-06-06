@@ -1,10 +1,10 @@
-name: Automated GitOps E-Commerce Deployment
+name: Automated GitOps Deployment
 
-# Trigger the workflow on code merges into the master branch
+# Trigger the workflow on code merges into the main branch
 on:
   push:
     branches:
-      - master
+      - main
 
 # Global environment parameters (To be defined based on the Environment Contract)
 env:
