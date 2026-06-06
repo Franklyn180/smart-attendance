@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
@@ -12,6 +12,9 @@ ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
 # If a VITE_API_URL build-arg is provided, write it to a .env file for Vite to pick up
 RUN if [ -n "$VITE_API_URL" ]; then echo "VITE_API_URL=$VITE_API_URL" > .env; fi
+
+# Run ESLint for Vibe Coding guardrails
+RUN npm run lint
 
 RUN npm run build 
 

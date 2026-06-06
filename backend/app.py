@@ -8,12 +8,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
 import jwt
+import os
 
 import crud, models, schemas
 from database import SessionLocal, engine
 
 # JWT Configuration
-SECRET_KEY = "your-secret-key-change-in-production"
+SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
