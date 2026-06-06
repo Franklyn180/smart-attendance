@@ -40,7 +40,7 @@ const StudentDashboard = () => {
     stopCamera();
   };
 
-  const scanFrame = async (barcodeDetector: any) => {
+  const scanFrame = async (barcodeDetector: { detect: (el: HTMLVideoElement) => Promise<{ rawValue: string }[]> }) => {
     if (!videoRef.current) return;
     try {
       const detections = await barcodeDetector.detect(videoRef.current);
@@ -73,7 +73,7 @@ const StudentDashboard = () => {
         await videoRef.current.play();
       }
 
-      const BarcodeDetector = (window as any).BarcodeDetector;
+      const BarcodeDetector = (window as Window & { BarcodeDetector?: new (options: { formats: string[] }) => { detect: (el: HTMLVideoElement) => Promise<{ rawValue: string }[]> } }).BarcodeDetector;
       if (!BarcodeDetector) {
         setScanError('This device does not support barcode scanning. Use a modern mobile browser.');
         stopCamera();

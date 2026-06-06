@@ -59,10 +59,27 @@ def finalize_attendance_session(db: Session, session_id: int):
     if not session or not session.is_active:
         return session
 
-    present_user_ids = [attendance.user_id for attendance in session.attendance]
-    missing_students = db.query(models.User).filter(
+    # Get all students who have attended ANY session in this course (enrolled students)
+    enrolled_student_ids = db.query(models.User.id).join(
+        models.Attendance,
+        models.Attendance.user_id == models.User.id
+    ).join(
+        models.AttendanceSession,
+        models.Attendance.session_id == models.AttendanceSession.id
+    ).filter(
+        models.AttendanceSession.course_id == session.course_id,
         models.User.is_instructor == False,
-        models.User.student_id != None,
+        models.User.student_id != None
+    ).distinct().all()
+    
+    enrolled_student_ids = [s[0] for s in enrolled_student_ids]
+    
+    # Get students who marked present in THIS session
+    present_user_ids = [attendance.user_id for attendance in session.attendance]
+    
+    # Find missing students ONLY from those enrolled in the course
+    missing_students = db.query(models.User).filter(
+        models.User.id.in_(enrolled_student_ids),
         ~models.User.id.in_(present_user_ids)
     ).all()
 

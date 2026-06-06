@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import * as QRCodeReact from 'qrcode.react'
 import { Html5Qrcode } from 'html5-qrcode'
 import './styles.css'
 
-const QRCodeComponent = (QRCodeReact as any).QRCodeSVG || (QRCodeReact as any).default
+type QRCodeProps = { value: string; size?: number }
+type QRCodeModule = { QRCodeSVG?: React.ComponentType<QRCodeProps>; default?: React.ComponentType<QRCodeProps> }
+const QRCodeComponent = ((QRCodeReact as unknown as QRCodeModule).QRCodeSVG || (QRCodeReact as unknown as QRCodeModule).default) as React.ComponentType<QRCodeProps>
 
 const defaultApiUrl = typeof window !== 'undefined'
   ? `${window.location.protocol}//${window.location.hostname}:8001/api`
@@ -113,19 +115,16 @@ function App() {
   }, [])
 
   useEffect(() => {
-  const mobile =
-    /Android|iPhone|iPad|iPod|Mobile/i.test(
-      navigator.userAgent
-    )
-
-  setIsMobile(mobile)
-}, [])
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    setIsMobile(mobile)
+  }, [])
 
   // Load user data on token change
   useEffect(() => {
     if (token) {
       loadUserData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   // Countdown timer
@@ -170,7 +169,6 @@ function App() {
     }
   }
 
-  // Fixed: was hitting /api/api/users/students (double /api prefix)
   const loadActiveSessions = async () => {
     try {
       const response = await fetch(`${API_URL}/sessions/active`, {
@@ -251,7 +249,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Failed to load attendance records')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error loading attendance records')
     }
   }
@@ -299,7 +297,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Login failed')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error during login')
     } finally {
       setLoading(false)
@@ -352,7 +350,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Registration failed')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error during registration')
     } finally {
       setLoading(false)
@@ -406,7 +404,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Failed to create course')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error creating course')
     }
   }
@@ -442,7 +440,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Failed to start session')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error starting session')
     }
   }
@@ -460,7 +458,7 @@ function App() {
       } else {
         setMessage('Failed to end session')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error ending session')
     }
   }
@@ -486,7 +484,7 @@ function App() {
         const data = await response.json()
         setMessage(data.detail || 'Failed to mark attendance')
       }
-    } catch (error) {
+    } catch {
       setMessage('Error marking attendance')
     }
   }
@@ -555,6 +553,7 @@ function App() {
           }
         })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
 
   const handleScanQR = async (e: React.FormEvent) => {
