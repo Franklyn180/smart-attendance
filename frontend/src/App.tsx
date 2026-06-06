@@ -565,6 +565,23 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
+  const handleScanQR = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!scanData.trim()) {
+      setMessage('Please enter or scan a QR code')
+      return
+    }
+    await handleJoinSession(scanData.trim())
+  }
+
+  const refreshData = async () => {
+    if (user?.is_instructor) {
+      await loadInstructorSessions()
+      await loadAnalytics()
+    } else {
+      await loadActiveSessions()
+    }
+  }
 
   // ===== Render login/register screen =====
   if (!user) {
