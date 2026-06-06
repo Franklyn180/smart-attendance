@@ -219,21 +219,21 @@ function App() {
   }
 
   const getCountdown = (session: AttendanceSession) => {
-    const expiry = session.expires_at
-      ? new Date(session.expires_at + 'Z').getTime()
-      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
-    const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
-    const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
-    const seconds = String(remaining % 60).padStart(2, '0')
-    return `${minutes}:${seconds}`
-  }
+  const expiryStr = session.expires_at || 
+    new Date(new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000).toISOString()
+  const expiry = new Date(expiryStr.endsWith('Z') ? expiryStr : expiryStr + 'Z').getTime()
+  const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
+  const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
+  const seconds = String(remaining % 60).padStart(2, '0')
+  return `${minutes}:${seconds}`
+}
 
   const isSessionOpen = (session: AttendanceSession) => {
-    const expiry = session.expires_at
-      ? new Date(session.expires_at + 'Z').getTime()
-      : new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000
-    return expiry > now
-  }
+  const expiryStr = session.expires_at || 
+    new Date(new Date(session.started_at + 'Z').getTime() + 20 * 60 * 1000).toISOString()
+  const expiry = new Date(expiryStr.endsWith('Z') ? expiryStr : expiryStr + 'Z').getTime()
+  return expiry > now
+}
 
   const loadSessionAttendance = async (sessionId: number) => {
     if (!token) return
@@ -512,67 +512,59 @@ function App() {
     }
 
     const qrRegionId = 'qr-reader'
-    const html5QrCode = new Html5Qrcode(qrRegionId)
+    let html5QrCode: Html5Qrcode
 
-    html5QrCode
-      .start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: 280 },
-        (decodedText) => {
-          if (decodedText) {
-            setScanData(decodedText)
-            handleJoinSession(decodedText)
-            stopScanner()
-          }
-        },
-        () => {
-          // ignore non-fatal scan errors
-        },
-      )
-      .then(() => setScannerInstance(html5QrCode))
-      .catch((error) => {
-        console.error('QR scanner start failed:', error)
-        setMessage('Unable to open camera scanner. Please allow camera access or use manual entry.')
-        try {
-          html5QrCode.clear()
-        } catch {
-          // ignore
-        }
-        setShowScanner(false)
-      })
+    const startScanner = async () => {
+      await new Promise(resolve => setTimeout(resolve, 300))
 
-    return () => {
+      html5QrCode = new Html5Qrcode(qrRegionId)
+
       html5QrCode
-        .stop()
-        .catch(() => null)
-        .finally(() => {
+        .start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: 280 },
+          (decodedText) => {
+            if (decodedText) {
+              setScanData(decodedText)
+              handleJoinSession(decodedText)
+              stopScanner()
+            }
+          },
+          () => {
+            // ignore non-fatal scan errors
+          },
+        )
+        .then(() => setScannerInstance(html5QrCode))
+        .catch((error) => {
+          console.error('QR scanner start failed:', error)
+          setMessage('Unable to open camera scanner. Please allow camera access or use manual entry.')
           try {
             html5QrCode.clear()
           } catch {
             // ignore
           }
+          setShowScanner(false)
         })
+    }
+
+    startScanner()
+
+    return () => {
+      if (html5QrCode) {
+        html5QrCode
+          .stop()
+          .catch(() => null)
+          .finally(() => {
+            try {
+              html5QrCode.clear()
+            } catch {
+              // ignore
+            }
+          })
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
-
-  const handleScanQR = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!scanData.trim()) {
-      setMessage('Please enter or scan a QR code')
-      return
-    }
-    await handleJoinSession(scanData.trim())
-  }
-
-  const refreshData = async () => {
-    if (user?.is_instructor) {
-      await loadInstructorSessions()
-      await loadAnalytics()
-    } else {
-      await loadActiveSessions()
-    }
-  }
 
   // ===== Render login/register screen =====
   if (!user) {
