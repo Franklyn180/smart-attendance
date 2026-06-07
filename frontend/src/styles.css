@@ -112,14 +112,33 @@ button:hover {
   margin: 0;
 }
 
-.qr-reader {
-  width: 100%;
-  min-height: 320px;
+.qr-reader, #qr-reader {
+  width: 100% !important;
+  height: 320px !important;
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.95);
+  background: #000 !important;
   margin-bottom: 18px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#qr-reader > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.qr-reader video, #qr-reader video, #qr-reader > div > video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  display: block !important;
+}
+
+#qr-reader canvas {
+  display: none !important;
 }
 
 .stats-row {
