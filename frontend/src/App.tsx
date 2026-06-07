@@ -247,6 +247,7 @@ function App() {
       expiry = startedDate.getTime() + 20 * 60 * 1000
     }
     return expiry > now
+  }
   
 
   const loadSessionAttendance = async (sessionId: number) => {
