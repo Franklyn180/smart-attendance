@@ -558,7 +558,7 @@ function App() {
         }
 
         await html5QrCode.start(
-          { facingMode: { ideal: 'environment' } },
+          { facingMode: 'environment' },
           config,
           (decodedText: string) => {
             if (decodedText && html5QrCode) {
