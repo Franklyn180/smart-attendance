@@ -560,8 +560,17 @@ function App() {
         const camera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1]
 
         const config = {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
+          fps: 30,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+            const qrboxSize = Math.floor(minEdge * 0.8)
+            return { width: qrboxSize, height: qrboxSize }
+          },
+          aspectRatio: 1.0,
+          disableFlip: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+          },
         }
 
         await html5QrCode.start(
