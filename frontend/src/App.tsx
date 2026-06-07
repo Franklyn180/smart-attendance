@@ -8,7 +8,7 @@ type QRCodeModule = { QRCodeSVG?: React.ComponentType<QRCodeProps>; default?: Re
 const QRCodeComponent = ((QRCodeReact as unknown as QRCodeModule).QRCodeSVG || (QRCodeReact as unknown as QRCodeModule).default) as React.ComponentType<QRCodeProps>
 
 const defaultApiUrl = typeof window !== 'undefined'
-  ? `${window.location.protocol}//${window.location.hostname}:8001/api`
+  ? `${window.location.protocol}//${window.location.host}/api`
   : 'http://localhost:8001/api'
 
 const API_URL = import.meta.env.VITE_API_URL ?? defaultApiUrl
@@ -221,12 +221,10 @@ function App() {
   const getCountdown = (session: AttendanceSession) => {
     let expiry: number
     if (session.expires_at) {
-      // Parse ISO datetime string correctly
-      const expiryDate = new Date(session.expires_at)
+      const expiryDate = new Date(session.expires_at.endsWith('Z') ? session.expires_at : session.expires_at + 'Z')
       expiry = expiryDate.getTime()
     } else {
-      // Fallback: add 20 minutes to started_at
-      const startedDate = new Date(session.started_at)
+      const startedDate = new Date(session.started_at.endsWith('Z') ? session.started_at : session.started_at + 'Z')
       expiry = startedDate.getTime() + 20 * 60 * 1000
     }
     const remaining = Math.max(0, Math.floor((expiry - now) / 1000))
@@ -247,6 +245,7 @@ function App() {
       expiry = startedDate.getTime() + 20 * 60 * 1000
     }
     return expiry > now
+  }
   
 
   const loadSessionAttendance = async (sessionId: number) => {
@@ -574,9 +573,9 @@ function App() {
         )
         setScannerInstance(html5QrCode)
         setMessage('')
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('QR scanner error:', error)
-        const errorMsg = error?.message || String(error)
+        const errorMsg = (error as {message?: string})?.message || String(error)
         if (errorMsg.includes('Permission')) {
           setMessage('Camera permission denied. Please allow camera access in your device settings.')
         } else if (errorMsg.includes('NotFound') || errorMsg.includes('NotSupported')) {
@@ -1065,7 +1064,7 @@ function App() {
         <p className={`message ${message.includes('✓') ? 'success' : 'error'}`}>{message}</p>
       )}
     </div>
-  )
+    )
 }
 
 export default App
