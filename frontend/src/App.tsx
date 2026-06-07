@@ -527,7 +527,6 @@ function App() {
     }
     setShowScanner(false)
   }
-
   useEffect(() => {
     if (!showScanner || !isMobile) {
       return
@@ -540,57 +539,58 @@ function App() {
       try {
         const container = document.getElementById(qrRegionId)
         if (!container) {
-          console.error('QR reader container not found')
           setMessage('Error: Scanner container not found. Please refresh the page.')
           setShowScanner(false)
           return
         }
 
         container.innerHTML = ''
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
 
         html5QrCode = new Html5Qrcode(qrRegionId)
+        setScannerInstance(html5QrCode)
+
+        const devices = await Html5Qrcode.getCameras()
+        if (!devices || devices.length === 0) {
+          setMessage('No camera found on this device.')
+          setShowScanner(false)
+          return
+        }
+
+        const camera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1]
 
         const config = {
           fps: 10,
           qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
         }
 
         await html5QrCode.start(
-          { facingMode: 'environment' },
+          camera.id,
           config,
           (decodedText: string) => {
-            if (decodedText && html5QrCode) {
+            if (decodedText) {
               setScanData(decodedText)
               handleJoinSession(decodedText)
               stopScanner()
             }
           },
           () => {
-            // Suppress non-fatal errors
+            // Suppress non-fatal scan errors
           },
         )
-        setScannerInstance(html5QrCode)
         setMessage('')
       } catch (error: unknown) {
         console.error('QR scanner error:', error)
-        const errorMsg = (error as {message?: string})?.message || String(error)
-        if (errorMsg.includes('Permission')) {
-          setMessage('Camera permission denied. Please allow camera access in your device settings.')
+        const errorMsg = (error as { message?: string })?.message || String(error)
+        if (errorMsg.includes('Permission') || errorMsg.includes('NotAllowed')) {
+          setMessage('Camera permission denied. Please allow camera access in your browser settings.')
         } else if (errorMsg.includes('NotFound') || errorMsg.includes('NotSupported')) {
-          setMessage('Camera not found. Please ensure this is a mobile device with a camera.')
-        } else if (errorMsg.includes('NotAllowed')) {
-          setMessage('Camera access blocked. Please enable camera permissions and try again.')
+          setMessage('Camera not found on this device.')
         } else {
-          setMessage('Unable to open camera. Please check your device settings and try again.')
+          setMessage('Unable to open camera: ' + errorMsg)
         }
         if (html5QrCode) {
-          try {
-            html5QrCode.clear()
-          } catch (e) {
-            console.warn('Error clearing scanner:', e)
-          }
+          try { html5QrCode.clear() } catch (e) { console.warn(e) }
         }
         setShowScanner(false)
       }
@@ -601,25 +601,13 @@ function App() {
     return () => {
       if (html5QrCode) {
         html5QrCode.stop()
-          .then(() => {
-            try {
-              html5QrCode?.clear()
-            } catch (e) {
-              console.warn('Error clearing scanner on unmount:', e)
-            }
-          })
-          .catch((err) => {
-            console.warn('Error stopping scanner:', err)
-            try {
-              html5QrCode?.clear()
-            } catch (e) {
-              console.warn('Error clearing scanner after stop error:', e)
-            }
-          })
+          .then(() => { try { html5QrCode?.clear() } catch (e) { console.warn(e) } })
+          .catch((err) => { console.warn('Error stopping scanner:', err) })
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
+
 
   const handleScanQR = async (e: React.FormEvent) => {
     e.preventDefault()
