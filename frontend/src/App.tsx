@@ -528,94 +528,66 @@ function App() {
     setShowScanner(false)
   }
   useEffect(() => {
-    if (!showScanner || !isMobile) {
-      return
-    }
+    let stream: MediaStream | null = null
 
-    const qrRegionId = 'qr-reader'
-    let html5QrCode: Html5Qrcode | null = null
-
-    const startScanner = async () => {
+    const startCamera = async () => {
+      if (!showScanner || !isMobile) return
       try {
-        const container = document.getElementById(qrRegionId)
-        if (!container) {
-          setMessage('Error: Scanner container not found. Please refresh the page.')
-          setShowScanner(false)
-          return
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        })
+        const video = document.getElementById('qr-video') as HTMLVideoElement
+        if (video) {
+          video.srcObject = stream
         }
-
-        container.innerHTML = ''
-        await new Promise(resolve => setTimeout(resolve, 200))
-
-        html5QrCode = new Html5Qrcode(qrRegionId)
-        setScannerInstance(html5QrCode)
-
-        const devices = await Html5Qrcode.getCameras()
-        if (!devices || devices.length === 0) {
-          setMessage('No camera found on this device.')
-          setShowScanner(false)
-          return
-        }
-
-        const camera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1]
-
-        const config = {
-          fps: 30,
-          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
-            const qrboxSize = Math.floor(minEdge * 0.8)
-            return { width: qrboxSize, height: qrboxSize }
-          },
-          aspectRatio: 1.0,
-          disableFlip: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true,
-          },
-        }
-
-        await html5QrCode.start(
-          camera.id,
-          config,
-          (decodedText: string) => {
-            if (decodedText) {
-              setScanData(decodedText)
-              handleJoinSession(decodedText)
-              stopScanner()
-            }
-          },
-          () => {
-            // Suppress non-fatal scan errors
-          },
-        )
-        setMessage('')
       } catch (error: unknown) {
-        console.error('QR scanner error:', error)
         const errorMsg = (error as { message?: string })?.message || String(error)
         if (errorMsg.includes('Permission') || errorMsg.includes('NotAllowed')) {
           setMessage('Camera permission denied. Please allow camera access in your browser settings.')
-        } else if (errorMsg.includes('NotFound') || errorMsg.includes('NotSupported')) {
-          setMessage('Camera not found on this device.')
         } else {
-          setMessage('Unable to open camera: ' + errorMsg)
-        }
-        if (html5QrCode) {
-          try { html5QrCode.clear() } catch (e) { console.warn(e) }
+          setMessage('Unable to open camera. Please check your device settings.')
         }
         setShowScanner(false)
       }
     }
 
-    startScanner()
+    startCamera()
 
     return () => {
-      if (html5QrCode) {
-        html5QrCode.stop()
-          .then(() => { try { html5QrCode?.clear() } catch (e) { console.warn(e) } })
-          .catch((err) => { console.warn('Error stopping scanner:', err) })
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
+
+  const handleCapture = async () => {
+    const video = document.getElementById('qr-video') as HTMLVideoElement
+    if (!video) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    try {
+      const html5QrCode = new Html5Qrcode('qr-capture-region')
+      const imageDataUrl = canvas.toDataURL('image/jpeg')
+      const result = await html5QrCode.scanFileV2(
+        new File([await (await fetch(imageDataUrl)).blob()], 'capture.jpg', { type: 'image/jpeg' }),
+        true
+      )
+      if (result?.decodedText) {
+        setScanData(result.decodedText)
+        handleJoinSession(result.decodedText)
+        setShowScanner(false)
+      } else {
+        setMessage('No QR code found. Please try again.')
+      }
+    } catch {
+      setMessage('Could not read QR code. Hold steady and try again.')
+    }
+  }
+
 
 
   const handleScanQR = async (e: React.FormEvent) => {
@@ -1037,9 +1009,14 @@ function App() {
               {showScanner ? 'Close Scan Lens' : 'Open Scan Lens'}
             </button>
           </div>
-
           {showScanner && isMobile && (
-            <div id="qr-reader" className="qr-reader" />
+            <div className="scanner-container">
+              <video id="qr-video" autoPlay playsInline muted className="qr-video" />
+              <button type="button" onClick={handleCapture} className="capture-btn">
+                📷 Capture & Scan QR Code
+              </button>
+              <div id="qr-capture-region" style={{ display: 'none' }} />
+            </div>
           )}
 
           <form onSubmit={handleScanQR} className="form-stack">
