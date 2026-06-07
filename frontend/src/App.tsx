@@ -575,9 +575,9 @@ function App() {
         )
         setScannerInstance(html5QrCode)
         setMessage('')
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('QR scanner error:', error)
-        const errorMsg = error?.message || String(error)
+        const errorMsg = (error as {message?: string})?.message || String(error)
         if (errorMsg.includes('Permission')) {
           setMessage('Camera permission denied. Please allow camera access in your device settings.')
         } else if (errorMsg.includes('NotFound') || errorMsg.includes('NotSupported')) {
