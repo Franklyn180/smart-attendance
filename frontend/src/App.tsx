@@ -103,7 +103,6 @@ function App() {
   // Student scanning states
   const [scanData, setScanData] = useState('')
   const [showScanner, setShowScanner] = useState(false)
-  const [scannerInstance, setScannerInstance] = useState<Html5Qrcode | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   // Persist login token across refreshes
@@ -511,115 +510,68 @@ function App() {
     }
   }
 
-  const stopScanner = async () => {
-    if (scannerInstance) {
-      try {
-        await scannerInstance.stop()
-      } catch (error) {
-        console.warn('Error stopping QR scanner:', error)
-      }
-      try {
-        await scannerInstance.clear()
-      } catch (error) {
-        console.warn('Error clearing QR scanner:', error)
-      }
-      setScannerInstance(null)
-    }
-    setShowScanner(false)
-  }
-
   useEffect(() => {
-    if (!showScanner || !isMobile) {
-      return
-    }
+    let stream: MediaStream | null = null
 
-    const qrRegionId = 'qr-reader'
-    let html5QrCode: Html5Qrcode | null = null
-
-    const startScanner = async () => {
+    const startCamera = async () => {
+      if (!showScanner || !isMobile) return
       try {
-        const container = document.getElementById(qrRegionId)
-        if (!container) {
-          console.error('QR reader container not found')
-          setMessage('Error: Scanner container not found. Please refresh the page.')
-          setShowScanner(false)
-          return
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        })
+        const video = document.getElementById('qr-video') as HTMLVideoElement
+        if (video) {
+          video.srcObject = stream
         }
-
-        container.innerHTML = ''
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        html5QrCode = new Html5Qrcode(qrRegionId)
-
-        const config = {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
-        }
-
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          config,
-          (decodedText: string) => {
-            if (decodedText && html5QrCode) {
-              setScanData(decodedText)
-              handleJoinSession(decodedText)
-              stopScanner()
-            }
-          },
-          () => {
-            // Suppress non-fatal errors
-          },
-        )
-        setScannerInstance(html5QrCode)
-        setMessage('')
       } catch (error: unknown) {
-        console.error('QR scanner error:', error)
-        const errorMsg = (error as {message?: string})?.message || String(error)
-        if (errorMsg.includes('Permission')) {
-          setMessage('Camera permission denied. Please allow camera access in your device settings.')
-        } else if (errorMsg.includes('NotFound') || errorMsg.includes('NotSupported')) {
-          setMessage('Camera not found. Please ensure this is a mobile device with a camera.')
-        } else if (errorMsg.includes('NotAllowed')) {
-          setMessage('Camera access blocked. Please enable camera permissions and try again.')
+        const errorMsg = (error as { message?: string })?.message || String(error)
+        if (errorMsg.includes('Permission') || errorMsg.includes('NotAllowed')) {
+          setMessage('Camera permission denied. Please allow camera access in your browser settings.')
         } else {
-          setMessage('Unable to open camera. Please check your device settings and try again.')
-        }
-        if (html5QrCode) {
-          try {
-            html5QrCode.clear()
-          } catch (e) {
-            console.warn('Error clearing scanner:', e)
-          }
+          setMessage('Unable to open camera. Please check your device settings.')
         }
         setShowScanner(false)
       }
     }
 
-    startScanner()
+    startCamera()
 
     return () => {
-      if (html5QrCode) {
-        html5QrCode.stop()
-          .then(() => {
-            try {
-              html5QrCode?.clear()
-            } catch (e) {
-              console.warn('Error clearing scanner on unmount:', e)
-            }
-          })
-          .catch((err) => {
-            console.warn('Error stopping scanner:', err)
-            try {
-              html5QrCode?.clear()
-            } catch (e) {
-              console.warn('Error clearing scanner after stop error:', e)
-            }
-          })
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showScanner, isMobile])
+
+  const handleCapture = async () => {
+    const video = document.getElementById('qr-video') as HTMLVideoElement
+    if (!video) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    try {
+      const html5QrCode = new Html5Qrcode('qr-capture-region')
+      const imageDataUrl = canvas.toDataURL('image/jpeg')
+      const result = await html5QrCode.scanFileV2(
+        new File([await (await fetch(imageDataUrl)).blob()], 'capture.jpg', { type: 'image/jpeg' }),
+        true
+      )
+      if (result?.decodedText) {
+        setScanData(result.decodedText)
+        handleJoinSession(result.decodedText)
+        setShowScanner(false)
+      } else {
+        setMessage('No QR code found. Please try again.')
+      }
+    } catch {
+      setMessage('Could not read QR code. Hold steady and try again.')
+    }
+  }
+
+
 
   const handleScanQR = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1040,9 +992,14 @@ function App() {
               {showScanner ? 'Close Scan Lens' : 'Open Scan Lens'}
             </button>
           </div>
-
           {showScanner && isMobile && (
-            <div id="qr-reader" className="qr-reader" />
+            <div className="scanner-container">
+              <video id="qr-video" autoPlay playsInline muted className="qr-video" />
+              <button type="button" onClick={handleCapture} className="capture-btn">
+                📷 Capture & Scan QR Code
+              </button>
+              <div id="qr-capture-region" style={{ display: 'none' }} />
+            </div>
           )}
 
           <form onSubmit={handleScanQR} className="form-stack">
