@@ -1065,7 +1065,8 @@ function App() {
         <p className={`message ${message.includes('✓') ? 'success' : 'error'}`}>{message}</p>
       )}
     </div>
-  )
+    )
+  }
 }
 
 export default App
