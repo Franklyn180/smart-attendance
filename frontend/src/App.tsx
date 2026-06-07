@@ -103,7 +103,6 @@ function App() {
   // Student scanning states
   const [scanData, setScanData] = useState('')
   const [showScanner, setShowScanner] = useState(false)
-  const [scannerInstance, setScannerInstance] = useState<Html5Qrcode | null>(null)
   const [isMobile, setIsMobile] = useState(false)
 
   // Persist login token across refreshes
@@ -511,22 +510,6 @@ function App() {
     }
   }
 
-  const stopScanner = async () => {
-    if (scannerInstance) {
-      try {
-        await scannerInstance.stop()
-      } catch (error) {
-        console.warn('Error stopping QR scanner:', error)
-      }
-      try {
-        await scannerInstance.clear()
-      } catch (error) {
-        console.warn('Error clearing QR scanner:', error)
-      }
-      setScannerInstance(null)
-    }
-    setShowScanner(false)
-  }
   useEffect(() => {
     let stream: MediaStream | null = null
 
