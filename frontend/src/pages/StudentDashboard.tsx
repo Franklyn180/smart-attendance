@@ -48,7 +48,7 @@ const StudentDashboard = () => {
         handleScanSuccess(detections[0].rawValue || detections[0].rawValue);
         return;
       }
-    } catch (err) {
+    } catch {
       setScanError('Unable to read QR code. Please try again.');
       stopCamera();
       return;
@@ -85,7 +85,7 @@ const StudentDashboard = () => {
       setScanResult(null);
       setScanError(null);
       requestAnimationFrame(() => scanFrame(detector));
-    } catch (err) {
+    } catch {
       setScanError('Camera access denied or unavailable. Please allow camera access on your device.');
       setIsScanning(false);
     }

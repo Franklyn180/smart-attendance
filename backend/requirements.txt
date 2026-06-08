@@ -8,3 +8,6 @@ pyjwt
 passlib[bcrypt]
 python-multipart
 ruff
+pytest
+aiosqlite
+httpx

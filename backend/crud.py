@@ -1,8 +1,11 @@
-from datetime import datetime
-from sqlalchemy.orm import Session, joinedload
-from passlib.context import CryptContext
-import models, schemas
 import uuid
+from datetime import datetime
+
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session, joinedload
+
+import models
+import schemas
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -68,15 +71,15 @@ def finalize_attendance_session(db: Session, session_id: int):
         models.Attendance.session_id == models.AttendanceSession.id
     ).filter(
         models.AttendanceSession.course_id == session.course_id,
-        models.User.is_instructor == False,
-        models.User.student_id != None
+        ~models.User.is_instructor,
+        models.User.student_id.isnot(None)
     ).distinct().all()
-    
+
     enrolled_student_ids = [s[0] for s in enrolled_student_ids]
-    
+
     # Get students who marked present in THIS session
     present_user_ids = [attendance.user_id for attendance in session.attendance]
-    
+
     # Find missing students ONLY from those enrolled in the course
     missing_students = db.query(models.User).filter(
         models.User.id.in_(enrolled_student_ids),
@@ -101,7 +104,7 @@ def finalize_attendance_session(db: Session, session_id: int):
 def expire_timed_out_sessions(db: Session):
     now = datetime.utcnow()
     active_sessions = db.query(models.AttendanceSession).filter(
-        models.AttendanceSession.is_active == True
+        models.AttendanceSession.is_active
     ).all()
     for session in active_sessions:
         if session.expires_at and session.expires_at <= now:
@@ -115,7 +118,7 @@ def get_session_by_key(db: Session, session_key: str):
 def get_active_sessions_for_course(db: Session, course_id: int):
     return db.query(models.AttendanceSession).filter(
         models.AttendanceSession.course_id == course_id,
-        models.AttendanceSession.is_active == True,
+        models.AttendanceSession.is_active,
     ).all()
 
 def get_session_by_id(db: Session, session_id: int):
@@ -174,7 +177,7 @@ def get_session_attendance(db: Session, session_id: int):
 
 # ===== Analytics =====
 def get_analytics(db: Session):
-    total_students = db.query(models.User).filter(models.User.is_instructor == False).count()
+    total_students = db.query(models.User).filter(~models.User.is_instructor).count()
     total_courses = db.query(models.Course).count()
     total_attendance = db.query(models.Attendance).count()
 

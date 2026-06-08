@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel, EmailStr
 
 
 # ===== Authentication Schemas =====
@@ -13,7 +13,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    student_id: Optional[str] = None
+    student_id: str | None = None
     is_instructor: bool = False
 
 
@@ -21,7 +21,7 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     full_name: str
-    student_id: Optional[str]
+    student_id: str | None
     is_instructor: bool
     is_active: bool
 
@@ -52,7 +52,7 @@ class CourseOut(CourseCreate):
 # ===== Attendance Session Schemas =====
 class AttendanceSessionCreate(BaseModel):
     course_id: int
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class AttendanceSessionOut(BaseModel):
@@ -61,10 +61,10 @@ class AttendanceSessionOut(BaseModel):
     instructor_id: int
     session_key: str
     started_at: datetime
-    ended_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    ended_at: datetime | None = None
+    expires_at: datetime | None = None
     is_active: bool
-    description: Optional[str] = None
+    description: str | None = None
 
     class Config:
         from_attributes = True
@@ -77,11 +77,11 @@ class AttendanceSessionResponse(BaseModel):
     instructor_id: int
     session_key: str
     started_at: datetime
-    ended_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
+    ended_at: datetime | None = None
+    expires_at: datetime | None = None
     is_active: bool
-    description: Optional[str] = None
-    course: Optional[CourseOut] = None   # Optional so it never crashes if course missing
+    description: str | None = None
+    course: CourseOut | None = None   # Optional so it never crashes if course missing
 
     class Config:
         from_attributes = True
@@ -94,7 +94,7 @@ class JoinSessionRequest(BaseModel):
 # ===== Attendance Schemas =====
 class AttendanceScan(BaseModel):
     """Scan attendance via QR code"""
-    scan_data: Optional[str] = None
+    scan_data: str | None = None
 
 
 class AttendanceOut(BaseModel):
@@ -122,7 +122,7 @@ class AnalyticsOut(BaseModel):
     total_students: int
     total_courses: int
     total_attendance: int
-    attendance_by_session: List[AttendanceBySession]
+    attendance_by_session: list[AttendanceBySession]
 
     class Config:
         from_attributes = True
@@ -133,7 +133,7 @@ class StudentCreate(BaseModel):
     name: str
     email: EmailStr
     student_id: str
-    course_id: Optional[int] = None
+    course_id: int | None = None
 
 
 class StudentOut(BaseModel):
@@ -141,7 +141,7 @@ class StudentOut(BaseModel):
     name: str
     email: EmailStr
     student_id: str
-    course_id: Optional[int] = None
+    course_id: int | None = None
 
     class Config:
         from_attributes = True
