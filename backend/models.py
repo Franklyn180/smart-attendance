@@ -1,7 +1,10 @@
 from datetime import timedelta
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func, Boolean, Text
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import relationship
+
 from database import Base
+
 
 class User(Base):
     __tablename__ = 'users'

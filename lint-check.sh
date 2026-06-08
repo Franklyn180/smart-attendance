@@ -5,8 +5,7 @@ cd frontend && npm run lint
 echo "Frontend lint passed"
 
 echo "=== Linting Backend ==="
-cd ../backend && pip install ruff --break-system-packages -q
-ruff check .
+cd ../backend && ./venv/bin/ruff check .
 echo "Backend lint passed"
 
 echo "=== Validating docker-compose.yml ==="

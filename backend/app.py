@@ -269,6 +269,25 @@ def end_session(
     return crud.finalize_attendance_session(db, session_id)
 
 
+@app.get('/api/sessions/{session_id}/attendance', response_model=list[schemas.AttendanceOut])
+def get_session_attendance(
+    session_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.is_instructor:
+        raise HTTPException(status_code=403, detail='Only instructors can view session attendance.')
+
+    session = crud.get_session_by_id(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail='Session not found.')
+
+    if session.instructor_id != current_user.id:
+        raise HTTPException(status_code=403, detail='Not your session.')
+
+    return crud.get_session_attendance(db, session_id)
+
+
 # ===== Attendance =====
 @app.post('/api/attendance/join-session', response_model=schemas.AttendanceOut)
 def join_session(
