@@ -1,16 +1,19 @@
+# ruff: noqa: B008
+
+import os
 import time
 from datetime import datetime, timedelta
-from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, status
+import jwt
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload
-import jwt
-import os
 
-import crud, models, schemas
+import crud
+import models
+import schemas
 from database import SessionLocal, engine
 
 # JWT Configuration
@@ -27,7 +30,7 @@ app = FastAPI(
 @app.on_event('startup')
 def startup_event():
     last_error = None
-    for attempt in range(30):
+    for _ in range(30):
         try:
             models.Base.metadata.create_all(bind=engine)
             seed_demo_data()
@@ -76,19 +79,25 @@ def seed_demo_data():
         active_session = db.query(models.AttendanceSession).filter(
             models.AttendanceSession.course_id == course.id,
             models.AttendanceSession.instructor_id == instructor.id,
-            models.AttendanceSession.is_active == True,
+            models.AttendanceSession.is_active,
         ).first()
+
         if not active_session:
-            crud.create_attendance_session(db, course.id, instructor.id, description='Demo attendance session')
+            crud.create_attendance_session(
+                db,
+                course.id,
+                instructor.id,
+                description='Demo attendance session'
+            )
     finally:
         db.close()
 
 
-# Allow all origins so frontend works regardless of host/port/deployment
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,   # must be False when allow_origins=["*"]
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,14 +113,11 @@ def get_db():
         db.close()
 
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None):
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    to_encode = {"user_id": user_id, "exp": expire}
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+def create_access_token(user_id: int, expires_delta: timedelta | None = None):
+    expire = datetime.utcnow() + (
+        expires_delta if expires_delta else timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    )
+    return jwt.encode({"user_id": user_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_current_user(
@@ -124,71 +130,34 @@ def get_current_user(
         user_id: int = payload.get("user_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.ExpiredSignatureError as err:
+        raise HTTPException(status_code=401, detail="Token expired") from err
+    except jwt.InvalidTokenError as err:
+        raise HTTPException(status_code=401, detail="Invalid token") from err
 
     user = crud.get_user_by_id(db, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
+
     return user
 
 
-# ===== Root Endpoints =====
-@app.get('/')
-def root():
-    return {
-        'message': 'Welcome to Smart Attendance Management API',
-        'endpoints': [
-            '/api/health',
-            '/api/auth/register',
-            '/api/auth/login',
-            '/api/auth/me',
-            '/api/courses',
-            '/api/sessions/active',
-            '/api/sessions/start',
-            '/api/sessions/{id}/end',
-            '/api/attendance/join-session',
-            '/api/attendance/scan',
-            '/api/analytics',
-            '/docs',
-        ],
-    }
-
-
-@app.get('/api')
-def api_root():
-    return {'message': 'API is available', 'docs': '/docs'}
-
-
-@app.get('/api/health')
-def health_check():
-    return {'status': 'ok'}
-
-
-# ===== Authentication Endpoints =====
+# ===== Auth =====
 @app.post('/api/auth/register', response_model=schemas.TokenResponse)
 def register(user: schemas.UserRegister, db: Session = Depends(get_db)):
-    existing_user = crud.get_user_by_email(db, user.email)
-    if existing_user:
+    if crud.get_user_by_email(db, user.email):
         raise HTTPException(status_code=400, detail='Email already registered.')
 
     if not user.is_instructor and not user.student_id:
         raise HTTPException(status_code=400, detail='Student ID is required for student registration.')
 
     if user.student_id:
-        existing_student = db.query(models.User).filter(
-            models.User.student_id == user.student_id
-        ).first()
-        if existing_student:
+        if db.query(models.User).filter(models.User.student_id == user.student_id).first():
             raise HTTPException(status_code=400, detail='Student ID already registered.')
 
     db_user = crud.create_user(db, user)
-    access_token = create_access_token(db_user.id)
-
     return {
-        'access_token': access_token,
+        'access_token': create_access_token(db_user.id),
         'token_type': 'bearer',
         'user': db_user,
     }
@@ -200,9 +169,8 @@ def login(credentials: schemas.UserLogin, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail='Invalid email or password.')
 
-    access_token = create_access_token(user.id)
     return {
-        'access_token': access_token,
+        'access_token': create_access_token(user.id),
         'token_type': 'bearer',
         'user': user,
     }
@@ -213,7 +181,7 @@ def get_current_user_info(current_user: models.User = Depends(get_current_user))
     return current_user
 
 
-# ===== Course Endpoints =====
+# ===== Courses =====
 @app.get('/api/courses', response_model=list[schemas.CourseOut])
 def read_courses(db: Session = Depends(get_db)):
     return crud.get_courses(db)
@@ -228,13 +196,13 @@ def create_course(
     if not current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Only instructors can create courses.')
 
-    existing = db.query(models.Course).filter(models.Course.code == course.code).first()
-    if existing:
+    if db.query(models.Course).filter(models.Course.code == course.code).first():
         raise HTTPException(status_code=400, detail='Course code already exists.')
+
     return crud.create_course(db, course)
 
 
-# ===== Attendance Session Endpoints =====
+# ===== Sessions =====
 @app.post('/api/sessions/start', response_model=schemas.AttendanceSessionOut)
 def start_session(
     session_data: schemas.AttendanceSessionCreate,
@@ -248,8 +216,12 @@ def start_session(
     if not course:
         raise HTTPException(status_code=404, detail='Course not found.')
 
-    session = crud.create_attendance_session(db, session_data.course_id, current_user.id, session_data.description)
-    return session
+    return crud.create_attendance_session(
+        db,
+        session_data.course_id,
+        current_user.id,
+        session_data.description
+    )
 
 
 @app.get('/api/sessions/active', response_model=list[schemas.AttendanceSessionResponse])
@@ -257,15 +229,13 @@ def get_active_sessions(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get all active attendance sessions (for students to join)"""
     crud.expire_timed_out_sessions(db)
-    # Eager-load course so AttendanceSessionResponse serializes correctly
-    sessions = db.query(models.AttendanceSession).options(
+
+    return db.query(models.AttendanceSession).options(
         joinedload(models.AttendanceSession.course)
     ).filter(
-        models.AttendanceSession.is_active == True
+        models.AttendanceSession.is_active
     ).all()
-    return sessions
 
 
 @app.get('/api/sessions/instructor-sessions', response_model=list[schemas.AttendanceSessionOut])
@@ -273,13 +243,11 @@ def get_instructor_sessions(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get all sessions created by current instructor"""
     if not current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Only instructors can view their sessions.')
 
     crud.expire_timed_out_sessions(db)
-    sessions = crud.get_instructor_sessions(db, current_user.id)
-    return sessions
+    return crud.get_instructor_sessions(db, current_user.id)
 
 
 @app.post('/api/sessions/{session_id}/end', response_model=schemas.AttendanceSessionOut)
@@ -288,7 +256,6 @@ def end_session(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Instructor ends an active session"""
     if not current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Only instructors can end sessions.')
 
@@ -297,19 +264,18 @@ def end_session(
         raise HTTPException(status_code=404, detail='Session not found.')
 
     if session.instructor_id != current_user.id:
-        raise HTTPException(status_code=403, detail='You can only end your own sessions.')
+        raise HTTPException(status_code=403, detail='Not your session.')
 
     return crud.finalize_attendance_session(db, session_id)
 
 
-# ===== Attendance Endpoints =====
+# ===== Attendance =====
 @app.post('/api/attendance/join-session', response_model=schemas.AttendanceOut)
 def join_session(
     request: schemas.JoinSessionRequest,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Student joins active session by QR code scan or direct click"""
     if current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Instructors cannot mark attendance.')
 
@@ -318,11 +284,11 @@ def join_session(
         raise HTTPException(status_code=404, detail='Session not found.')
 
     if not session.is_active:
-        raise HTTPException(status_code=400, detail='Session is no longer active.')
+        raise HTTPException(status_code=400, detail='Session closed.')
 
     if session.expires_at and datetime.utcnow() > session.expires_at:
         crud.finalize_attendance_session(db, session.id)
-        raise HTTPException(status_code=400, detail='Attendance window has closed.')
+        raise HTTPException(status_code=400, detail='Expired.')
 
     return crud.record_attendance(db, current_user.id, session.id, session.course_id)
 
@@ -333,28 +299,20 @@ def scan_attendance(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Student scans QR code to join attendance session"""
     if current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Instructors cannot mark attendance.')
 
-    if not payload.scan_data:
-        raise HTTPException(status_code=400, detail='Scan data is required.')
-
     session = crud.get_session_by_key(db, payload.scan_data)
     if not session:
-        raise HTTPException(status_code=404, detail='Invalid QR code or session not found.')
+        raise HTTPException(status_code=404, detail='Invalid QR code.')
 
     if not session.is_active:
-        raise HTTPException(status_code=400, detail='Session is no longer active.')
-
-    if session.expires_at and datetime.utcnow() > session.expires_at:
-        crud.finalize_attendance_session(db, session.id)
-        raise HTTPException(status_code=400, detail='Attendance window has closed.')
+        raise HTTPException(status_code=400, detail='Session closed.')
 
     return crud.record_attendance(db, current_user.id, session.id, session.course_id)
 
 
-# ===== Analytics Endpoints =====
+# ===== Analytics =====
 @app.get('/api/analytics', response_model=schemas.AnalyticsOut)
 def analytics(
     current_user: models.User = Depends(get_current_user),
@@ -365,42 +323,7 @@ def analytics(
     return crud.get_analytics(db)
 
 
-@app.get('/api/sessions/{session_id}/attendance', response_model=list[schemas.AttendanceOut])
-def get_session_attendance(
-    session_id: int,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Get attendance records for a specific session"""
-    session = crud.get_session_by_id(db, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail='Session not found.')
-
-    if session.instructor_id != current_user.id and not current_user.is_instructor:
-        raise HTTPException(status_code=403, detail='You do not have permission to view this session.')
-
-    if session.is_active and session.expires_at and datetime.utcnow() > session.expires_at:
-        crud.finalize_attendance_session(db, session_id)
-
-    return crud.get_session_attendance(db, session_id)
-
-
-# ===== Legacy Endpoints (backwards compatibility) =====
-@app.get('/api/students', response_model=list[schemas.StudentOut])
-def read_students(db: Session = Depends(get_db)):
-    return crud.get_students(db)
-
-
-@app.post('/api/students', response_model=schemas.StudentOut)
-def create_student(student: schemas.StudentCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.Student).filter(
-        (models.Student.email == student.email) | (models.Student.student_id == student.student_id)
-    ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail='Student email or roll number already exists.')
-    return crud.create_student(db, student)
-
-
+# ===== Students =====
 @app.get('/api/users/students', response_model=list[schemas.UserOut])
 def get_students(
     current_user: models.User = Depends(get_current_user),
@@ -408,4 +331,7 @@ def get_students(
 ):
     if not current_user.is_instructor:
         raise HTTPException(status_code=403, detail='Only instructors can view students.')
-    return db.query(models.User).filter(models.User.is_instructor == False).all()
+
+    return db.query(models.User).filter(
+        ~models.User.is_instructor
+    ).all()
