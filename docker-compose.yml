@@ -69,3 +69,13 @@ networks:
 
 
 
+
+  tests:
+    build:
+      context: ./backend
+    command: pytest test_app.py -v
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: mysql+pymysql://attendance_user:attendance_pass@database:3306/attendance_db
