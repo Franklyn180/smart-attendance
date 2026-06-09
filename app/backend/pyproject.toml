@@ -1,0 +1,30 @@
+[project]
+name = "smart-attendance-backend"
+version = "0.0.1"
+description = "Smart Attendance System Backend"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # Pyflakes
+  "I",    # isort
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "UP",   # pyupgrade
+]
+ignore = [
+  "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "models", "schemas", "crud", "database"]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
