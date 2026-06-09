@@ -235,17 +235,14 @@ function App() {
   const isSessionOpen = (session: AttendanceSession) => {
     let expiry: number
     if (session.expires_at) {
-      // Parse ISO datetime string correctly
       const expiryDate = new Date(session.expires_at)
       expiry = expiryDate.getTime()
     } else {
-      // Fallback: add 20 minutes to started_at
       const startedDate = new Date(session.started_at)
       expiry = startedDate.getTime() + 20 * 60 * 1000
     }
     return expiry > now
   }
-  
 
   const loadSessionAttendance = async (sessionId: number) => {
     if (!token) return
@@ -516,8 +513,9 @@ function App() {
     const startCamera = async () => {
       if (!showScanner || !isMobile) return
       try {
+        // FIX: removed width/height constraints that caused blurry captures
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          video: { facingMode: { ideal: 'environment' } }
         })
         const video = document.getElementById('qr-video') as HTMLVideoElement
         if (video) {
@@ -570,8 +568,6 @@ function App() {
       setMessage('Could not read QR code. Hold steady and try again.')
     }
   }
-
-
 
   const handleScanQR = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -777,7 +773,8 @@ function App() {
                     <p>Session ID: {session.id}</p>
                     <p>{session.description || 'No description'}</p>
                     <div className="qr-display">
-                      <QRCodeComponent value={session.session_key} size={150} />
+                      {/* FIX: increased QR size from 150 to 250 for easier scanning */}
+                      <QRCodeComponent value={session.session_key} size={250} />
                     </div>
                     <div className="session-meta">
                       <p className="session-key">{session.session_key}</p>
@@ -853,7 +850,6 @@ function App() {
                     <button onClick={() => toggleSessionAttendance(session.id)} className="view-btn">
                       {expandedSessionId === session.id ? 'Hide Attendance' : 'View Attendance'}
                     </button>
-
                     {expandedSessionId === session.id && sessionAttendance[session.id] && (
                       <div className="attendance-table">
                         <h4>Student Attendance</h4>
