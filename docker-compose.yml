@@ -1,44 +1,65 @@
 version: '3.8'
 
-# Group 9 Master Orchestration Core
-# Sub-Team A & B: Define microservices, network bridges, and volumes below.
-
+# =========================================================================
+# Group 9 Master Orchestration Core — Capstone Smart Attendance Engine
+# Coordinated by Sub-Teams A, B, and C
+# =========================================================================
 
 services:
+  # 1. Database Microservice Layer
   mysql:
     image: mysql:8.0
     container_name: database
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: attendance_db
-      MYSQL_USER: attendance_user
-      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD} 
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}            
     ports:
-      - "3306:3306"
+      - "3306:3306" # Exposed internally within host bounds; locked at SG edge
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - app_network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # 2. Application Backend Service Layer (FastAPI Core)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: production
     container_name: app_backend
     environment:
       DB_HOST: database
-      DB_USER: attendance_user
-      DB_PASSWORD: password
-      DB_NAME: attendance_db
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      BACKEND_PORT: 8000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: "HS256"
+      ATTENDANCE_WINDOW_MINUTES: 20
+      ONLINE_SESSION_ID_LENGTH: 8
     ports:
       - "8000:8000"
     depends_on:
       mysql:
         condition: service_healthy
+    networks:
+      - app_network
+      - monitoring_network # Linked to let Prometheus scrape business telemetry
+    # Enforce rolling upgrades during GitOps delivery steps
+    deploy:
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 10s
 
+  # 3. Application Frontend Service Layer
   frontend:
     build:
       context: ./frontend
@@ -49,6 +70,20 @@ services:
     depends_on:
       backend:
         condition: service_started
+    networks:
+      - app_network
+
+
+# Network & Storage Volume Contracts (Section 3 Boundaries)
+
+networks:
+  app_network:
+    name: app_network
+    driver: bridge
+  monitoring_network:
+    name: monitoring_network
+    driver: bridge
 
 volumes:
   db_data:
+    name: db_data
