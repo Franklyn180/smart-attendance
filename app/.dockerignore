@@ -1,0 +1,28 @@
+# Node dependencies
+node_modules
+frontend/node_modules
+
+# Python dependencies and virtual envs
+backend/.venv
+backend/__pycache__
+backend/*.pyc
+__pycache__/
+.venv
+venv
+
+# Build output
+dist
+build
+.vite
+.cache
+
+# Environment files
+.env
+*.env
+
+# Git and CI
+.git
+.github
+
+# Local files
+.DS_Store
