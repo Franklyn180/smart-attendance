@@ -1,7 +1,8 @@
 # Group 9 Master Orchestration Core
+
 # Sub-Team A & B: Define microservices, network bridges, and volumes below.
+
 services:
-  # 1. Database Microservice Layer
   mysql:
     image: mysql:8.0
     container_name: database
@@ -10,8 +11,6 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-app_db}
       MYSQL_USER: ${DB_USER:-app_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:-password}
-    ports:
-      - "3306:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
@@ -20,9 +19,8 @@ services:
       timeout: 5s
       retries: 10
     networks:
-      - app_network
+      - app-network
 
-  # 2. Application Backend Service Layer (FastAPI Core)
   backend:
     build:
       context: ./backend
@@ -35,57 +33,39 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-password}
       DB_NAME: ${DB_NAME:-app_db}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
-      JWT_ALGORITHM: "HS256"
-      ATTENDANCE_WINDOW_MINUTES: 20
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       mysql:
         condition: service_healthy
     networks:
-      - app_network
-    deploy:
-      update_config:
-        order: start-first
-        failure_action: rollback
-        delay: 10s
+      - app-network
 
-  # 3. Application Frontend Service Layer
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: "/api"
+        VITE_API_URL: "http://localhost:8001/api"
     image: app_frontend:v1.0
     container_name: app_frontend
     environment:
-      VITE_API_URL: "/api"
+      VITE_API_URL: "http://localhost:8001/api"
     ports:
       - "80:80"
     depends_on:
       backend:
         condition: service_started
     networks:
-      - app_network
-
-  tests:
-    build:
-      context: ./backend
-    command: pytest test_app.py -v
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: mysql+pymysql://attendance_user:attendance_pass@database:3306/attendance_db
-    networks:
-      - app_network
-
-networks:
-  app_network:
-    name: app_network
-    driver: bridge
+      - app-network
 
 volumes:
   db_data:
-    name: db_data
+
+networks:
+  app-network:
+    driver: bridge
+
+
+
+
