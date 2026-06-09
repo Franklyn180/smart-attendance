@@ -9,7 +9,7 @@ on:
       - main
 
 env:
-  AWS_REGION: "us-east-1" # Update to your target AWS region
+  AWS_REGION: "us-east-1" # Update to our correct region
   AWS_SECURITY_GROUP_ID: ${{ secrets.AWS_SECURITY_GROUP_ID }}
   EC2_HOST: ${{ secrets.EC2_HOST }}
   EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
